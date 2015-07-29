@@ -1,12 +1,12 @@
 /*
- * Copyright 2006 Sun Microsystems, Inc.  All Rights Reserved.
+ * Copyright (c) 2006, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 only, as
- * published by the Free Software Foundation.  Sun designates this
+ * published by the Free Software Foundation.  Oracle designates this
  * particular file as subject to the "Classpath" exception as provided
- * by Sun in the LICENSE file that accompanied this code.
+ * by Oracle in the LICENSE file that accompanied this code.
  *
  * This code is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
@@ -18,9 +18,9 @@
  * 2 along with this work; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
  *
- * Please contact Sun Microsystems, Inc., 4150 Network Circle, Santa Clara,
- * CA 95054 USA or visit www.sun.com if you need additional information or
- * have any questions.
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
 
 package com.sun.source.util;
@@ -41,54 +41,54 @@ public class TreePath implements Iterable<Tree> {
      * @return null if the node is not found
      */
     public static TreePath getPath(CompilationUnitTree unit, Tree target) {
-	return getPath(new TreePath(unit), target);
+        return getPath(new TreePath(unit), target);
     }
-    
+
     /**
      * Gets a tree path for a tree node within a subtree identified by a TreePath object.
      * @return null if the node is not found
      */
     public static TreePath getPath(TreePath path, Tree target) {
-	path.getClass();
-	target.getClass();
-	
-	class Result extends Error {
-	    static final long serialVersionUID = -5942088234594905625L;
-	    TreePath path;
-	    Result(TreePath path) {
-		this.path = path;
-	    }
-	}
-	class PathFinder extends TreePathScanner<TreePath,Tree> {
-	    public TreePath scan(Tree tree, Tree target) {
-		if (tree == target)
-		    throw new Result(new TreePath(getCurrentPath(), target));
-		return super.scan(tree, target);
-	    }
-	}
-	
-	try {
-	    new PathFinder().scan(path, target);
-	} catch (Result result) {
-	    return result.path;
-	}
+        path.getClass();
+        target.getClass();
+
+        class Result extends Error {
+            static final long serialVersionUID = -5942088234594905625L;
+            TreePath path;
+            Result(TreePath path) {
+                this.path = path;
+            }
+        }
+        class PathFinder extends TreePathScanner<TreePath,Tree> {
+            public TreePath scan(Tree tree, Tree target) {
+                if (tree == target)
+                    throw new Result(new TreePath(getCurrentPath(), target));
+                return super.scan(tree, target);
+            }
+        }
+
+        try {
+            new PathFinder().scan(path, target);
+        } catch (Result result) {
+            return result.path;
+        }
         return null;
     }
-    
+
     /**
      * Creates a TreePath for a root node.
      */
     public TreePath(CompilationUnitTree t) {
         this(null, t);
     }
-    
+
     /**
      * Creates a TreePath for a child node.
      */
     public TreePath(TreePath p, Tree t) {
         if (t.getKind() == Tree.Kind.COMPILATION_UNIT) {
             compilationUnit = (CompilationUnitTree) t;
-            parent = null; 
+            parent = null;
         }
         else {
             compilationUnit = p.compilationUnit;
@@ -100,42 +100,43 @@ public class TreePath implements Iterable<Tree> {
      * Get the compilation unit associated with this path.
      */
     public CompilationUnitTree getCompilationUnit() {
-	return compilationUnit;
+        return compilationUnit;
     }
-    
+
     /**
      * Get the leaf node for this path.
      */
     public Tree getLeaf() {
-	return leaf;
+        return leaf;
     }
-    
+
     /**
      * Get the path for the enclosing node, or null if there is no enclosing node.
      */
     public TreePath getParentPath() {
-	return parent;
+        return parent;
     }
 
     public Iterator<Tree> iterator() {
-	return new Iterator<Tree>() {
-	    public boolean hasNext() {
-		return curr.parent != null;
-	    }
-	    
-	    public Tree next() {
-		curr = curr.parent;
-		return curr.leaf;
-	    }
-	    
-	    public void remove() {
-		throw new UnsupportedOperationException();
-	    }
-	    
-	    private TreePath curr;
-	};
+        return new Iterator<Tree>() {
+            public boolean hasNext() {
+                return next != null;
+            }
+
+            public Tree next() {
+                Tree t = next.leaf;
+                next = next.parent;
+                return t;
+            }
+
+            public void remove() {
+                throw new UnsupportedOperationException();
+            }
+
+            private TreePath next = TreePath.this;
+        };
     }
-    
+
     private CompilationUnitTree compilationUnit;
     private Tree leaf;
     private TreePath parent;

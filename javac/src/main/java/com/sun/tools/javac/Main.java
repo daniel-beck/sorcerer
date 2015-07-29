@@ -1,12 +1,12 @@
 /*
- * Copyright 1999-2006 Sun Microsystems, Inc.  All Rights Reserved.
+ * Copyright (c) 1999, 2011, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 only, as
- * published by the Free Software Foundation.  Sun designates this
+ * published by the Free Software Foundation.  Oracle designates this
  * particular file as subject to the "Classpath" exception as provided
- * by Sun in the LICENSE file that accompanied this code.
+ * by Oracle in the LICENSE file that accompanied this code.
  *
  * This code is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
@@ -18,9 +18,9 @@
  * 2 along with this work; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
  *
- * Please contact Sun Microsystems, Inc., 4150 Network Circle, Santa Clara,
- * CA 95054 USA or visit www.sun.com if you need additional information or
- * have any questions.
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
 
 package com.sun.tools.javac;
@@ -28,7 +28,6 @@ package com.sun.tools.javac;
 import java.io.PrintWriter;
 import java.lang.reflect.*;
 
-import com.sun.tools.javac.util.Version;
 
 /**
  * The programmatic interface for the Java Programming Language
@@ -42,14 +41,7 @@ import com.sun.tools.javac.util.Version;
  * risk.  This code and its internal interfaces are subject to change
  * or deletion without notice.
  */
-@Version("@(#)Main.java	1.32 07/05/05")
 public class Main {
-
-    static {
-	ClassLoader loader = Main.class.getClassLoader();
-	if (loader != null)
-	    loader.setPackageAssertionStatus("com.sun.tools.javac", true);
-    }
 
     /** Unsupported command line interface.
      * @param args   The command line parameters.
@@ -58,7 +50,7 @@ public class Main {
       if (args.length > 0 && args[0].equals("-Xjdb")) {
         String[] newargs = new String[args.length + 2];
         Class<?> c = Class.forName("com.sun.tools.example.debug.tty.TTY");
-        Method method = c.getDeclaredMethod ("main", new Class[] {args.getClass()});
+        Method method = c.getDeclaredMethod ("main", new Class<?>[] {args.getClass()});
         method.setAccessible(true);
         System.arraycopy(args, 1, newargs, 3, args.length - 1);
         newargs[0] = "-connect";
@@ -79,13 +71,13 @@ public class Main {
      * javac, see the man page for details.
      */
     public static int compile(String[] args) {
-	com.sun.tools.javac.main.Main compiler =
-	    new com.sun.tools.javac.main.Main("javac");
-	return compiler.compile(args);
+        com.sun.tools.javac.main.Main compiler =
+            new com.sun.tools.javac.main.Main("javac");
+        return compiler.compile(args);
     }
 
-     
- 
+
+
     /** Programmatic interface to the Java Programming Language
      * compiler, javac.
      *
@@ -97,8 +89,8 @@ public class Main {
      * javac, see the man page for details.
      */
     public static int compile(String[] args, PrintWriter out) {
-	com.sun.tools.javac.main.Main compiler =
-	    new com.sun.tools.javac.main.Main("javac", out);
-	return compiler.compile(args);
+        com.sun.tools.javac.main.Main compiler =
+            new com.sun.tools.javac.main.Main("javac", out);
+        return compiler.compile(args);
     }
 }

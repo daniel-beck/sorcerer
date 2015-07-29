@@ -1,12 +1,12 @@
 /*
- * Copyright 1999-2005 Sun Microsystems, Inc.  All Rights Reserved.
+ * Copyright (c) 1999, 2011, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 only, as
- * published by the Free Software Foundation.  Sun designates this
+ * published by the Free Software Foundation.  Oracle designates this
  * particular file as subject to the "Classpath" exception as provided
- * by Sun in the LICENSE file that accompanied this code.
+ * by Oracle in the LICENSE file that accompanied this code.
  *
  * This code is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
@@ -18,25 +18,31 @@
  * 2 along with this work; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
  *
- * Please contact Sun Microsystems, Inc., 4150 Network Circle, Santa Clara,
- * CA 95054 USA or visit www.sun.com if you need additional information or
- * have any questions.
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
 
 package com.sun.tools.javac.code;
 
-import com.sun.tools.javac.util.Version;
+import java.util.EnumSet;
+import java.util.Locale;
+
+import com.sun.tools.javac.api.Formattable;
+import com.sun.tools.javac.api.Messages;
+
+import static com.sun.tools.javac.code.TypeTags.*;
+import static com.sun.tools.javac.code.Flags.*;
 
 /** Internal symbol kinds, which distinguish between elements of
  *  different subclasses of Symbol. Symbol kinds are organized so they can be
  *  or'ed to sets.
  *
- *  <p><b>This is NOT part of any API supported by Sun Microsystems.  If
- *  you write code that depends on this, you do so at your own risk.
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
  *  This code and its internal interfaces are subject to change or
  *  deletion without notice.</b>
  */
-@Version("@(#)Kinds.java	1.25 07/05/05")
 public class Kinds {
 
     private Kinds() {} // uninstantiable
@@ -84,4 +90,145 @@ public class Kinds {
     public static final int WRONG_MTH    = ERRONEOUS+6; // one method with wrong arguments
     public static final int ABSENT_MTH   = ERRONEOUS+7; // missing method
     public static final int ABSENT_TYP   = ERRONEOUS+8; // missing type
+
+    public enum KindName implements Formattable {
+        ANNOTATION("kindname.annotation"),
+        CONSTRUCTOR("kindname.constructor"),
+        INTERFACE("kindname.interface"),
+        ENUM("kindname.enum"),
+        STATIC("kindname.static"),
+        TYPEVAR("kindname.type.variable"),
+        BOUND("kindname.type.variable.bound"),
+        VAR("kindname.variable"),
+        VAL("kindname.value"),
+        METHOD("kindname.method"),
+        CLASS("kindname.class"),
+        STATIC_INIT("kindname.static.init"),
+        INSTANCE_INIT("kindname.instance.init"),
+        PACKAGE("kindname.package");
+
+        private String name;
+
+        KindName(String name) {
+            this.name = name;
+        }
+
+        public String toString() {
+            return name;
+        }
+
+        public String getKind() {
+            return "Kindname";
+        }
+
+        public String toString(Locale locale, Messages messages) {
+            String s = toString();
+            return messages.getLocalizedString(locale, "compiler.misc." + s);
+        }
+    }
+
+    /** A KindName representing a given symbol kind
+     */
+    public static KindName kindName(int kind) {
+        switch (kind) {
+        case PCK: return KindName.PACKAGE;
+        case TYP: return KindName.CLASS;
+        case VAR: return KindName.VAR;
+        case VAL: return KindName.VAL;
+        case MTH: return KindName.METHOD;
+            default : throw new AssertionError("Unexpected kind: "+kind);
+        }
+    }
+
+    /** A KindName representing a given symbol
+     */
+    public static KindName kindName(Symbol sym) {
+        switch (sym.getKind()) {
+        case PACKAGE:
+            return KindName.PACKAGE;
+
+        case ENUM:
+            return KindName.ENUM;
+
+        case ANNOTATION_TYPE:
+        case CLASS:
+            return KindName.CLASS;
+
+        case INTERFACE:
+            return KindName.INTERFACE;
+
+        case TYPE_PARAMETER:
+            return KindName.TYPEVAR;
+
+        case ENUM_CONSTANT:
+        case FIELD:
+        case PARAMETER:
+        case LOCAL_VARIABLE:
+        case EXCEPTION_PARAMETER:
+        case RESOURCE_VARIABLE:
+            return KindName.VAR;
+
+        case CONSTRUCTOR:
+            return KindName.CONSTRUCTOR;
+
+        case METHOD:
+            return KindName.METHOD;
+        case STATIC_INIT:
+            return KindName.STATIC_INIT;
+        case INSTANCE_INIT:
+            return KindName.INSTANCE_INIT;
+
+        default:
+            if (sym.kind == VAL)
+                // I don't think this can happen but it can't harm
+                // playing it safe --ahe
+                return KindName.VAL;
+            else
+                throw new AssertionError("Unexpected kind: "+sym.getKind());
+        }
+    }
+
+    /** A set of KindName(s) representing a set of symbol's kinds.
+     */
+    public static EnumSet<KindName> kindNames(int kind) {
+        EnumSet<KindName> kinds = EnumSet.noneOf(KindName.class);
+        if ((kind & VAL) != 0)
+            kinds.add(((kind & VAL) == VAR) ? KindName.VAR : KindName.VAL);
+        if ((kind & MTH) != 0) kinds.add(KindName.METHOD);
+        if ((kind & TYP) != 0) kinds.add(KindName.CLASS);
+        if ((kind & PCK) != 0) kinds.add(KindName.PACKAGE);
+        return kinds;
+    }
+
+    /** A KindName representing the kind of a given class/interface type.
+     */
+    public static KindName typeKindName(Type t) {
+        if (t.tag == TYPEVAR ||
+            t.tag == CLASS && (t.tsym.flags() & COMPOUND) != 0)
+            return KindName.BOUND;
+        else if (t.tag == PACKAGE)
+            return KindName.PACKAGE;
+        else if ((t.tsym.flags_field & ANNOTATION) != 0)
+            return KindName.ANNOTATION;
+        else if ((t.tsym.flags_field & INTERFACE) != 0)
+            return KindName.INTERFACE;
+        else
+            return KindName.CLASS;
+    }
+
+    /** A KindName representing the kind of a a missing symbol, given an
+     *  error kind.
+     * */
+    public static KindName absentKind(int kind) {
+        switch (kind) {
+        case ABSENT_VAR:
+            return KindName.VAR;
+        case WRONG_MTHS: case WRONG_MTH: case ABSENT_MTH:
+            return KindName.METHOD;
+        case ABSENT_TYP:
+            return KindName.CLASS;
+        default:
+            throw new AssertionError("Unexpected kind: "+kind);
+        }
+    }
 }

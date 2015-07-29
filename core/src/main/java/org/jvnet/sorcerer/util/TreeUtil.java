@@ -103,7 +103,7 @@ public class TreeUtil {
      */
     private static Element getElement(JCTree t) {
         t = TreeInfo.skipParens(t);
-        switch (t.tag) {
+        switch (t.getTag()) {
         case JCTree.CLASSDEF:
             return ((JCClassDecl)t).sym;
         case JCTree.METHODDEF:

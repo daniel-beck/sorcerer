@@ -1,12 +1,12 @@
 /*
- * Copyright 2005-2006 Sun Microsystems, Inc.  All Rights Reserved.
+ * Copyright (c) 2005, 2011, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 only, as
- * published by the Free Software Foundation.  Sun designates this
+ * published by the Free Software Foundation.  Oracle designates this
  * particular file as subject to the "Classpath" exception as provided
- * by Sun in the LICENSE file that accompanied this code.
+ * by Oracle in the LICENSE file that accompanied this code.
  *
  * This code is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
@@ -18,9 +18,9 @@
  * 2 along with this work; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
  *
- * Please contact Sun Microsystems, Inc., 4150 Network Circle, Santa Clara,
- * CA 95054 USA or visit www.sun.com if you need additional information or
- * have any questions.
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
 
 package com.sun.source.tree;
@@ -28,10 +28,10 @@ package com.sun.source.tree;
 /**
  * Common interface for all nodes in an abstract syntax tree.
  *
- * <p><b>WARNING:</b> This interface and its sub-interfaces are 
+ * <p><b>WARNING:</b> This interface and its sub-interfaces are
  * subject to change as the Java&trade; programming language evolves.
- * These interfaces are implemented by Sun's Java compiler (javac) 
- * and should not be implemented either directly or indirectly by 
+ * These interfaces are implemented by the JDK Java compiler (javac)
+ * and should not be implemented either directly or indirectly by
  * other applications.
  *
  * @author Peter von der Ah&eacute;
@@ -40,11 +40,12 @@ package com.sun.source.tree;
  * @since 1.6
  */
 public interface Tree {
-    
+
     /**
      * Enumerates all kinds of trees.
      */
     public enum Kind {
+
         /**
          * Used for instances of {@link AnnotationTree}.
          */
@@ -91,7 +92,7 @@ public interface Tree {
         CATCH(CatchTree.class),
 
         /**
-         * Used for instances of {@link ClassTree}.
+         * Used for instances of {@link ClassTree} representing classes.
          */
         CLASS(ClassTree.class),
 
@@ -229,6 +230,11 @@ public interface Tree {
          * Used for instances of {@link ParameterizedTypeTree}.
          */
         PARAMETERIZED_TYPE(ParameterizedTypeTree.class),
+
+        /**
+         * Used for instances of {@link UnionTypeTree}.
+         */
+        UNION_TYPE(UnionTypeTree.class),
 
         /**
          * Used for instances of {@link TypeCastTree}.
@@ -519,12 +525,12 @@ public interface Tree {
          * a string literal expression of type {@link String}.
          */
         STRING_LITERAL(LiteralTree.class),
-	
-	/**
-	 * Used for instances of {@link LiteralTree} representing
-	 * the use of {@code null}.
-	 */
-	NULL_LITERAL(LiteralTree.class),
+
+        /**
+         * Used for instances of {@link LiteralTree} representing
+         * the use of {@code null}.
+         */
+        NULL_LITERAL(LiteralTree.class),
 
         /**
          * Used for instances of {@link WildcardTree} representing
@@ -550,30 +556,45 @@ public interface Tree {
         ERRONEOUS(ErroneousTree.class),
 
         /**
+         * Used for instances of {@link ClassTree} representing interfaces.
+         */
+        INTERFACE(ClassTree.class),
+
+        /**
+         * Used for instances of {@link ClassTree} representing enums.
+         */
+        ENUM(ClassTree.class),
+
+        /**
+         * Used for instances of {@link ClassTree} representing annotation types.
+         */
+        ANNOTATION_TYPE(ClassTree.class),
+
+        /**
          * An implementation-reserved node. This is the not the node
          * you are looking for.
          */
         OTHER(null);
-                
-        
+
+
         Kind(Class<? extends Tree> intf) {
             associatedInterface = intf;
         }
-                
+
         public Class<? extends Tree> asInterface() {
             return associatedInterface;
         }
-        
+
         private final Class<? extends Tree> associatedInterface;
     }
-    
+
     /**
      * Gets the kind of this tree.
      *
      * @return the kind of this tree.
      */
     Kind getKind();
-    
+
     /**
      * Accept method used to implement the visitor pattern.  The
      * visitor pattern is used to implement operations on trees.

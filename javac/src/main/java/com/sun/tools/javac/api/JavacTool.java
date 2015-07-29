@@ -1,12 +1,12 @@
 /*
- * Copyright 2005-2006 Sun Microsystems, Inc.  All Rights Reserved.
+ * Copyright (c) 2005, 2011, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 only, as
- * published by the Free Software Foundation.  Sun designates this
+ * published by the Free Software Foundation.  Oracle designates this
  * particular file as subject to the "Classpath" exception as provided
- * by Sun in the LICENSE file that accompanied this code.
+ * by Oracle in the LICENSE file that accompanied this code.
  *
  * This code is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
@@ -18,9 +18,9 @@
  * 2 along with this work; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
  *
- * Please contact Sun Microsystems, Inc., 4150 Network Circle, Santa Clara,
- * CA 95054 USA or visit www.sun.com if you need additional information or
- * have any questions.
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
 
 package com.sun.tools.javac.api;
@@ -28,10 +28,11 @@ package com.sun.tools.javac.api;
 import java.io.File;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.Writer;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Iterator;
@@ -42,30 +43,28 @@ import javax.lang.model.SourceVersion;
 import javax.tools.*;
 
 import com.sun.source.util.JavacTask;
+import com.sun.tools.javac.file.JavacFileManager;
 import com.sun.tools.javac.main.JavacOption.OptionKind;
 import com.sun.tools.javac.main.JavacOption;
 import com.sun.tools.javac.main.Main;
 import com.sun.tools.javac.main.RecognizedOptions.GrumpyHelper;
 import com.sun.tools.javac.main.RecognizedOptions;
+import com.sun.tools.javac.util.ClientCodeException;
 import com.sun.tools.javac.util.Context;
-import com.sun.tools.javac.util.JavacFileManager;
 import com.sun.tools.javac.util.Log;
 import com.sun.tools.javac.util.Options;
 import com.sun.tools.javac.util.Pair;
-import com.sun.tools.javac.util.Version;
-import java.nio.charset.Charset;
 
 /**
  * TODO: describe com.sun.tools.javac.api.Tool
  *
- * <p><b>This is NOT part of any API supported by Sun Microsystems.
+ * <p><b>This is NOT part of any supported API.
  * If you write code that depends on this, you do so at your own
  * risk.  This code and its internal interfaces are subject to change
  * or deletion without notice.</b></p>
  *
  * @author Peter von der Ah\u00e9
  */
-@Version("@(#)JavacTool.java	1.19 07/05/05")
 public final class JavacTool implements JavaCompiler {
     private final List<Pair<String,String>> options
         = new ArrayList<Pair<String,String>>();
@@ -139,7 +138,7 @@ public final class JavacTool implements JavaCompiler {
     }
 
     private static boolean match(OptionKind clientKind, OptionKind optionKind) {
-        return (clientKind == (optionKind == OptionKind.HIDDEN ? optionKind.EXTENDED : optionKind));
+        return (clientKind == (optionKind == OptionKind.HIDDEN ? OptionKind.EXTENDED : optionKind));
     }
 
     public JavacFileManager getStandardFileManager(
@@ -147,40 +146,14 @@ public final class JavacTool implements JavaCompiler {
         Locale locale,
         Charset charset) {
         Context context = new Context();
+        context.put(Locale.class, locale);
         if (diagnosticListener != null)
             context.put(DiagnosticListener.class, diagnosticListener);
-        context.put(Log.outKey, new PrintWriter(System.err, true)); // FIXME
+        PrintWriter pw = (charset == null)
+                ? new PrintWriter(System.err, true)
+                : new PrintWriter(new OutputStreamWriter(System.err, charset), true);
+        context.put(Log.outKey, pw);
         return new JavacFileManager(context, true, charset);
-    }
-
-    private boolean compilationInProgress = false;
-
-    /**
-     * Register that a compilation is about to start.
-     */
-    void beginContext(final Context context) {
-        if (compilationInProgress)
-            throw new IllegalStateException("Compilation in progress");
-        compilationInProgress = true;
-        final JavaFileManager givenFileManager = context.get(JavaFileManager.class);
-        context.put(JavaFileManager.class, (JavaFileManager)null);
-        context.put(JavaFileManager.class, new Context.Factory<JavaFileManager>() {
-            public JavaFileManager make() {
-                if (givenFileManager != null) {
-                    context.put(JavaFileManager.class, givenFileManager);
-                    return givenFileManager;
-                } else {
-                    return new JavacFileManager(context, true, null);
-                }
-            }
-        });
-    }
-
-    /**
-     * Register that a compilation is completed.
-     */
-    void endContext() {
-        compilationInProgress = false;
     }
 
     public JavacTask getTask(Writer out,
@@ -190,38 +163,45 @@ public final class JavacTool implements JavaCompiler {
                              Iterable<String> classes,
                              Iterable<? extends JavaFileObject> compilationUnits)
     {
-        final String kindMsg = "All compilation units must be of SOURCE kind";
-        if (options != null)
-            for (String option : options)
-                option.getClass(); // null check
-        if (classes != null) {
-            for (String cls : classes)
-                if (!SourceVersion.isName(cls)) // implicit null check
-                    throw new IllegalArgumentException("Not a valid class name: " + cls);
-        }
-        if (compilationUnits != null) {
-            for (JavaFileObject cu : compilationUnits) {
-                if (cu.getKind() != JavaFileObject.Kind.SOURCE) // implicit null check
-                    throw new IllegalArgumentException(kindMsg);
+        try {
+            Context context = new Context();
+            ClientCodeWrapper ccw = ClientCodeWrapper.instance(context);
+
+            final String kindMsg = "All compilation units must be of SOURCE kind";
+            if (options != null)
+                for (String option : options)
+                    option.getClass(); // null check
+            if (classes != null) {
+                for (String cls : classes)
+                    if (!SourceVersion.isName(cls)) // implicit null check
+                        throw new IllegalArgumentException("Not a valid class name: " + cls);
             }
+            if (compilationUnits != null) {
+                compilationUnits = ccw.wrapJavaFileObjects(compilationUnits); // implicit null check
+                for (JavaFileObject cu : compilationUnits) {
+                    if (cu.getKind() != JavaFileObject.Kind.SOURCE)
+                        throw new IllegalArgumentException(kindMsg);
+                }
+            }
+
+            if (diagnosticListener != null)
+                context.put(DiagnosticListener.class, ccw.wrap(diagnosticListener));
+
+            if (out == null)
+                context.put(Log.outKey, new PrintWriter(System.err, true));
+            else
+                context.put(Log.outKey, new PrintWriter(out, true));
+
+            if (fileManager == null)
+                fileManager = getStandardFileManager(diagnosticListener, null, null);
+            fileManager = ccw.wrap(fileManager);
+            context.put(JavaFileManager.class, fileManager);
+            processOptions(context, fileManager, options);
+            Main compiler = new Main("javacTask", context.get(Log.outKey));
+            return new JavacTaskImpl(compiler, options, context, classes, compilationUnits);
+        } catch (ClientCodeException ex) {
+            throw new RuntimeException(ex.getCause());
         }
-
-        Context context = new Context();
-
-        if (diagnosticListener != null)
-            context.put(DiagnosticListener.class, diagnosticListener);
-
-        if (out == null)
-            context.put(Log.outKey, new PrintWriter(System.err, true));
-        else
-            context.put(Log.outKey, new PrintWriter(out, true));
-
-        if (fileManager == null)
-            fileManager = getStandardFileManager(diagnosticListener, null, null);
-        context.put(JavaFileManager.class, fileManager);
-        processOptions(context, fileManager, options);
-        Main compiler = new Main("javacTask", context.get(Log.outKey));
-        return new JavacTaskImpl(this, compiler, options, context, classes, compilationUnits);
     }
 
     private static void processOptions(Context context,

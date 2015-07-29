@@ -1,12 +1,12 @@
 /*
- * Copyright 1999-2006 Sun Microsystems, Inc.  All Rights Reserved.
+ * Copyright (c) 1999, 2011, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 only, as
- * published by the Free Software Foundation.  Sun designates this
+ * published by the Free Software Foundation.  Oracle designates this
  * particular file as subject to the "Classpath" exception as provided
- * by Sun in the LICENSE file that accompanied this code.
+ * by Oracle in the LICENSE file that accompanied this code.
  *
  * This code is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
@@ -18,15 +18,14 @@
  * 2 along with this work; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
  *
- * Please contact Sun Microsystems, Inc., 4150 Network Circle, Santa Clara,
- * CA 95054 USA or visit www.sun.com if you need additional information or
- * have any questions.
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
 
 package com.sun.tools.javac.jvm;
 
 import java.io.*;
-import java.util.*;
 import java.util.Set;
 import java.util.HashSet;
 
@@ -35,27 +34,29 @@ import javax.tools.FileObject;
 import javax.tools.JavaFileObject;
 
 import com.sun.tools.javac.code.*;
+import com.sun.tools.javac.code.Attribute.RetentionPolicy;
 import com.sun.tools.javac.code.Symbol.*;
 import com.sun.tools.javac.code.Type.*;
+import com.sun.tools.javac.file.BaseFileObject;
 import com.sun.tools.javac.util.*;
-import com.sun.tools.javac.util.List;
 
 import static com.sun.tools.javac.code.BoundKind.*;
 import static com.sun.tools.javac.code.Flags.*;
 import static com.sun.tools.javac.code.Kinds.*;
 import static com.sun.tools.javac.code.TypeTags.*;
 import static com.sun.tools.javac.jvm.UninitializedType.*;
+import static com.sun.tools.javac.main.OptionName.*;
 import static javax.tools.StandardLocation.CLASS_OUTPUT;
+
 
 /** This class provides operations to map an internal symbol table graph
  *  rooted in a ClassSymbol into a classfile.
  *
- *  <p><b>This is NOT part of any API supported by Sun Microsystems.  If
- *  you write code that depends on this, you do so at your own risk.
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
  *  This code and its internal interfaces are subject to change or
  *  deletion without notice.</b>
  */
-@Version("@(#)ClassWriter.java	1.130 07/05/05")
 public class ClassWriter extends ClassFile {
     protected static final Context.Key<ClassWriter> classWriterKey =
         new Context.Key<ClassWriter>();
@@ -141,11 +142,11 @@ public class ClassWriter extends ClassFile {
     private final Log log;
 
     /** The name table. */
-    private final Name.Table names;
+    private final Names names;
 
     /** Access to files. */
     private final JavaFileManager fileManager;
-    
+
     /** The tags and constants used in compressed stackmap. */
     static final int SAME_FRAME_SIZE = 64;
     static final int SAME_LOCALS_1_STACK_ITEM_EXTENDED = 247;
@@ -167,7 +168,7 @@ public class ClassWriter extends ClassFile {
         context.put(classWriterKey, this);
 
         log = Log.instance(context);
-        names = Name.Table.instance(context);
+        names = Names.instance(context);
         syms = Symtab.instance(context);
         options = Options.instance(context);
         target = Target.instance(context);
@@ -175,14 +176,15 @@ public class ClassWriter extends ClassFile {
         types = Types.instance(context);
         fileManager = context.get(JavaFileManager.class);
 
-        verbose        = options.get("-verbose")     != null;
-        scramble       = options.get("-scramble")    != null;
-        scrambleAll    = options.get("-scrambleAll") != null;
-        retrofit       = options.get("-retrofit") != null;
-        genCrt         = options.get("-Xjcov") != null;
-        debugstackmap  = options.get("debugstackmap") != null;
+        verbose        = options.isSet(VERBOSE);
+        scramble       = options.isSet("-scramble");
+        scrambleAll    = options.isSet("-scrambleAll");
+        retrofit       = options.isSet("-retrofit");
+        genCrt         = options.isSet(XJCOV);
+        debugstackmap  = options.isSet("debugstackmap");
 
-        emitSourceFile = options.get("-g:")==null || options.get("-g:source")!=null;
+        emitSourceFile = options.isUnset(G_CUSTOM) ||
+                            options.isSet(G_CUSTOM, "source");
 
         String dumpModFlags = options.get("dumpmodifiers");
         dumpClassModifiers =
@@ -217,11 +219,14 @@ public class ClassWriter extends ClassFile {
     /** Return flags as a string, separated by " ".
      */
     public static String flagNames(long flags) {
-        StringBuffer sbuf = new StringBuffer();
+        StringBuilder sbuf = new StringBuilder();
         int i = 0;
         long f = flags & StandardFlags;
         while (f != 0) {
-            if ((f & 1) != 0) sbuf.append(" " + flagName[i]);
+            if ((f & 1) != 0) {
+                sbuf.append(" ");
+                sbuf.append(flagName[i]);
+            }
             f = f >> 1;
             i++;
         }
@@ -374,11 +379,9 @@ public class ClassWriter extends ClassFile {
                              ? types.erasure(outer)
                              : outer);
             sigbuf.appendByte('.');
-            assert c.flatname.startsWith(c.owner.enclClass().flatname);
+            Assert.check(c.flatname.startsWith(c.owner.enclClass().flatname));
             sigbuf.appendName(rawOuter
-                              ? c.flatname.subName(c.owner.enclClass()
-                                                   .flatname.len+1,
-                                                   c.flatname.len)
+                              ? c.flatname.subName(c.owner.enclClass().flatname.getByteLength()+1,c.flatname.getByteLength())
                               : c.name);
         } else {
             sigbuf.appendBytes(externalize(c.flatname));
@@ -416,7 +419,7 @@ public class ClassWriter extends ClassFile {
     /** Return signature of given type
      */
     Name typeSig(Type type) {
-        assert sigbuf.length == 0;
+        Assert.check(sigbuf.length == 0);
         //- System.out.println(" ? " + type);
         assembleSig(type);
         Name n = sigbuf.toName(names);
@@ -466,7 +469,7 @@ public class ClassWriter extends ClassFile {
         int i = 1;
         while (i < pool.pp) {
             Object value = pool.pool[i];
-            assert value != null;
+            Assert.checkNonNull(value);
             if (value instanceof Pool.Method)
                 value = ((Pool.Method)value).m;
             else if (value instanceof Pool.Variable)
@@ -529,7 +532,7 @@ public class ClassWriter extends ClassFile {
                 poolbuf.appendByte(CONSTANT_Class);
                 poolbuf.appendChar(pool.put(xClassName(type)));
             } else {
-                assert false : "writePool " + value;
+                Assert.error("writePool " + value);
             }
             i++;
         }
@@ -543,7 +546,7 @@ public class ClassWriter extends ClassFile {
     Name fieldName(Symbol sym) {
         if (scramble && (sym.flags() & PRIVATE) != 0 ||
             scrambleAll && (sym.flags() & (PROTECTED | PUBLIC)) == 0)
-            return names.fromString("_$" + sym.name.index);
+            return names.fromString("_$" + sym.name.getIndex());
         else
             return sym.name;
     }
@@ -683,7 +686,7 @@ public class ClassWriter extends ClassFile {
         boolean hasInvisible = false;
         if (m.params != null) for (VarSymbol s : m.params) {
             for (Attribute.Compound a : s.getAnnotationMirrors()) {
-                switch (getRetention(a.type.tsym)) {
+                switch (types.getRetention(a)) {
                 case SOURCE: break;
                 case CLASS: hasInvisible = true; break;
                 case RUNTIME: hasVisible = true; break;
@@ -699,7 +702,7 @@ public class ClassWriter extends ClassFile {
             for (VarSymbol s : m.params) {
                 ListBuffer<Attribute.Compound> buf = new ListBuffer<Attribute.Compound>();
                 for (Attribute.Compound a : s.getAnnotationMirrors())
-                    if (getRetention(a.type.tsym) == RetentionPolicy.RUNTIME)
+                    if (types.getRetention(a) == RetentionPolicy.RUNTIME)
                         buf.append(a);
                 databuf.appendChar(buf.length());
                 for (Attribute.Compound a : buf)
@@ -714,7 +717,7 @@ public class ClassWriter extends ClassFile {
             for (VarSymbol s : m.params) {
                 ListBuffer<Attribute.Compound> buf = new ListBuffer<Attribute.Compound>();
                 for (Attribute.Compound a : s.getAnnotationMirrors())
-                    if (getRetention(a.type.tsym) == RetentionPolicy.CLASS)
+                    if (types.getRetention(a) == RetentionPolicy.CLASS)
                         buf.append(a);
                 databuf.appendChar(buf.length());
                 for (Attribute.Compound a : buf)
@@ -738,7 +741,7 @@ public class ClassWriter extends ClassFile {
         ListBuffer<Attribute.Compound> visibles = new ListBuffer<Attribute.Compound>();
         ListBuffer<Attribute.Compound> invisibles = new ListBuffer<Attribute.Compound>();
         for (Attribute.Compound a : attrs) {
-            switch (getRetention(a.type.tsym)) {
+            switch (types.getRetention(a)) {
             case SOURCE: break;
             case CLASS: invisibles.append(a); break;
             case RUNTIME: visibles.append(a); break;
@@ -764,29 +767,6 @@ public class ClassWriter extends ClassFile {
             attrCount++;
         }
         return attrCount;
-    }
-
-    /** A mirror of java.lang.annotation.RetentionPolicy. */
-    enum RetentionPolicy {
-        SOURCE,
-        CLASS,
-        RUNTIME
-    }
-
-    RetentionPolicy getRetention(TypeSymbol annotationType) {
-        RetentionPolicy vis = RetentionPolicy.CLASS; // the default
-        Attribute.Compound c = annotationType.attribute(syms.retentionType.tsym);
-        if (c != null) {
-            Attribute value = c.member(names.value);
-            if (value != null && value instanceof Attribute.Enum) {
-                Name levelName = ((Attribute.Enum)value).value.name;
-                if (levelName == names.SOURCE) vis = RetentionPolicy.SOURCE;
-                else if (levelName == names.CLASS) vis = RetentionPolicy.CLASS;
-                else if (levelName == names.RUNTIME) vis = RetentionPolicy.RUNTIME;
-                else ;// /* fail soft */ throw new AssertionError(levelName);
-            }
-        }
-        return vis;
     }
 
     /** A visitor to write an attribute including its leading
@@ -821,7 +801,7 @@ public class ClassWriter extends ClassFile {
                 databuf.appendByte('Z');
                 break;
             case CLASS:
-                assert value instanceof String;
+                Assert.check(value instanceof String);
                 databuf.appendByte('s');
                 value = names.fromString(value.toString()); // CONSTANT_Utf8
                 break;
@@ -865,7 +845,6 @@ public class ClassWriter extends ClassFile {
             p.snd.accept(awriter);
         }
     }
-
 /**********************************************************************
  * Writing Objects
  **********************************************************************/
@@ -873,7 +852,9 @@ public class ClassWriter extends ClassFile {
     /** Enter an inner class into the `innerClasses' set/queue.
      */
     void enterInner(ClassSymbol c) {
-        assert !c.type.isCompound();
+        if (c.type.isCompound()) {
+            throw new AssertionError("Unexpected intersection type: " + c.type);
+        }
         try {
             c.complete();
         } catch (CompletionFailure ex) {
@@ -882,10 +863,10 @@ public class ClassWriter extends ClassFile {
         }
         if (c.type.tag != CLASS) return; // arrays
         if (pool != null && // pool might be null if called from xClassName
-            c.owner.kind != PCK &&
+            c.owner.enclClass() != null &&
             (innerClasses == null || !innerClasses.contains(c))) {
 //          log.errWriter.println("enter inner " + c);//DEBUG
-            if (c.owner.kind == TYP) enterInner((ClassSymbol)c.owner);
+            enterInner(c.owner.enclClass());
             pool.put(c);
             pool.put(c.name);
             if (innerClasses == null) {
@@ -908,6 +889,8 @@ public class ClassWriter extends ClassFile {
              l = l.tail) {
             ClassSymbol inner = l.head;
             char flags = (char) adjustFlags(inner.flags_field);
+            if ((flags & INTERFACE) != 0) flags |= ABSTRACT; // Interfaces are always ABSTRACT
+            if (inner.name.isEmpty()) flags &= ~FINAL; // Anonymous class: unset FINAL flag
             if (dumpInnerClassModifiers) {
                 log.errWriter.println("INNERCLASS  " + inner.name);
                 log.errWriter.println("---" + flagNames(flags));
@@ -916,7 +899,7 @@ public class ClassWriter extends ClassFile {
             databuf.appendChar(
                 inner.owner.kind == TYP ? pool.get(inner.owner) : 0);
             databuf.appendChar(
-                inner.name.len != 0 ? pool.get(inner.name) : 0);
+                !inner.name.isEmpty() ? pool.get(inner.name) : 0);
             databuf.appendChar(flags);
         }
         endAttr(alenIdx);
@@ -1035,16 +1018,16 @@ public class ClassWriter extends ClassFile {
                 Code.LocalVar var = code.varBuffer[i];
 
                 // write variable info
-                assert var.start_pc >= 0;
-                assert var.start_pc <= code.cp;
+                Assert.check(var.start_pc >= 0
+                        && var.start_pc <= code.cp);
                 databuf.appendChar(var.start_pc);
-                assert var.length >= 0;
-                assert (var.start_pc + var.length) <= code.cp;
+                Assert.check(var.length >= 0
+                        && (var.start_pc + var.length) <= code.cp);
                 databuf.appendChar(var.length);
                 VarSymbol sym = var.sym;
                 databuf.appendChar(pool.put(sym.name));
                 Type vartype = sym.erasure(types);
-                if (!types.isSameType(sym.type, vartype))
+                if (needsLocalVariableTypeEntry(sym.type))
                     nGenericVars++;
                 databuf.appendChar(pool.put(typeSig(vartype)));
                 databuf.appendChar(var.reg);
@@ -1061,7 +1044,7 @@ public class ClassWriter extends ClassFile {
             for (int i=0; i<code.varBufferSize; i++) {
                 Code.LocalVar var = code.varBuffer[i];
                 VarSymbol sym = var.sym;
-                if (types.isSameType(sym.type, sym.erasure(types)))
+                if (!needsLocalVariableTypeEntry(sym.type))
                     continue;
                 count++;
                 // write variable info
@@ -1071,7 +1054,7 @@ public class ClassWriter extends ClassFile {
                 databuf.appendChar(pool.put(typeSig(sym.type)));
                 databuf.appendChar(var.reg);
             }
-            assert count == nGenericVars;
+            Assert.check(count == nGenericVars);
             endAttr(alenIdx);
             acount++;
         }
@@ -1084,6 +1067,14 @@ public class ClassWriter extends ClassFile {
             acount++;
         }
         endAttrs(acountIdx, acount);
+    }
+    //where
+    private boolean needsLocalVariableTypeEntry(Type t) {
+        //a local variable needs a type-entry if its type T is generic
+        //(i.e. |T| != T) and if it's not an intersection type (not supported
+        //in signature attribute grammar)
+        return (!types.isSameType(t, types.erasure(t)) &&
+                !t.isCompound());
     }
 
     void writeStackMap(Code code) {
@@ -1134,12 +1125,12 @@ public class ClassWriter extends ClassFile {
             }
             break;
         case JSR202: {
-            assert code.stackMapBuffer == null;
+            Assert.checkNull(code.stackMapBuffer);
             for (int i=0; i<nframes; i++) {
                 if (debugstackmap) System.out.print("  " + i + ":");
                 StackMapTableFrame frame = code.stackMapTableBuffer[i];
                 frame.write(this);
-                if (debugstackmap) System.out.println();                
+                if (debugstackmap) System.out.println();
             }
             break;
         }
@@ -1205,24 +1196,24 @@ public class ClassWriter extends ClassFile {
                 throw new AssertionError();
             }
         }
-    
+
     /** An entry in the JSR202 StackMapTable */
     abstract static class StackMapTableFrame {
         abstract int getFrameType();
-        
+
         void write(ClassWriter writer) {
             int frameType = getFrameType();
             writer.databuf.appendByte(frameType);
             if (writer.debugstackmap) System.out.print(" frame_type=" + frameType);
         }
-        
+
         static class SameFrame extends StackMapTableFrame {
             final int offsetDelta;
             SameFrame(int offsetDelta) {
                 this.offsetDelta = offsetDelta;
             }
             int getFrameType() {
-                return (offsetDelta < SAME_FRAME_SIZE) ? offsetDelta : SAME_FRAME_EXTENDED; 
+                return (offsetDelta < SAME_FRAME_SIZE) ? offsetDelta : SAME_FRAME_EXTENDED;
             }
             @Override
             void write(ClassWriter writer) {
@@ -1235,7 +1226,7 @@ public class ClassWriter extends ClassFile {
                 }
             }
         }
-        
+
         static class SameLocals1StackItemFrame extends StackMapTableFrame {
             final int offsetDelta;
             final Type stack;
@@ -1244,7 +1235,7 @@ public class ClassWriter extends ClassFile {
                 this.stack = stack;
             }
             int getFrameType() {
-                return (offsetDelta < SAME_FRAME_SIZE) ? 
+                return (offsetDelta < SAME_FRAME_SIZE) ?
                        (SAME_FRAME_SIZE + offsetDelta) :
                        SAME_LOCALS_1_STACK_ITEM_EXTENDED;
             }
@@ -1281,7 +1272,7 @@ public class ClassWriter extends ClassFile {
                 }
             }
         }
-        
+
         static class AppendFrame extends StackMapTableFrame {
             final int frameType;
             final int offsetDelta;
@@ -1305,7 +1296,7 @@ public class ClassWriter extends ClassFile {
                 }
             }
         }
-        
+
         static class FullFrame extends StackMapTableFrame {
             final int offsetDelta;
             final Type[] locals;
@@ -1338,11 +1329,11 @@ public class ClassWriter extends ClassFile {
                 }
             }
         }
-        
+
        /** Compare this frame with the previous frame and produce
         *  an entry of compressed stack map frame. */
-        static StackMapTableFrame getInstance(Code.StackMapFrame this_frame, 
-                                              int prev_pc, 
+        static StackMapTableFrame getInstance(Code.StackMapFrame this_frame,
+                                              int prev_pc,
                                               Type[] prev_locals,
                                               Types types) {
             Type[] locals = this_frame.locals;
@@ -1363,11 +1354,11 @@ public class ClassWriter extends ClassFile {
                     for (int i=prev_locals.length, j=0; i<locals.length; i++,j++) {
                         local_diff[j] = locals[i];
                     }
-                    return new AppendFrame(SAME_FRAME_EXTENDED - diff_length, 
-                                           offset_delta, 
+                    return new AppendFrame(SAME_FRAME_EXTENDED - diff_length,
+                                           offset_delta,
                                            local_diff);
                 } else if (0 < diff_length && diff_length < MAX_LOCAL_LENGTH_DIFF) {
-                    // CHOP 
+                    // CHOP
                     return new ChopFrame(SAME_FRAME_EXTENDED - diff_length,
                                          offset_delta);
                 }
@@ -1375,7 +1366,7 @@ public class ClassWriter extends ClassFile {
             // FULL_FRAME
             return new FullFrame(offset_delta, locals, stack);
         }
-        
+
         static boolean isInt(Type t) {
             return (t.tag < TypeTags.INT || t.tag == TypeTags.BOOLEAN);
         }
@@ -1415,7 +1406,7 @@ public class ClassWriter extends ClassFile {
             return diff_length;
         }
     }
-    
+
     void writeFields(Scope.Entry e) {
         // process them in reverse sibling order;
         // i.e., process them in declaration order.
@@ -1456,7 +1447,7 @@ public class ClassWriter extends ClassFile {
         try {
             writeClassFile(out, c);
             if (verbose)
-                log.errWriter.println(log.getLocalizedString("verbose.wrote.file", outFile));
+                log.printVerbose("wrote.file", outFile);
             out.close();
             out = null;
         } finally {
@@ -1474,7 +1465,7 @@ public class ClassWriter extends ClassFile {
      */
     public void writeClassFile(OutputStream out, ClassSymbol c)
         throws IOException, PoolOverflow, StringOverflow {
-        assert (c.flags() & COMPOUND) == 0;
+        Assert.check((c.flags() & COMPOUND) == 0);
         databuf.reset();
         poolbuf.reset();
         sigbuf.reset();
@@ -1490,6 +1481,7 @@ public class ClassWriter extends ClassFile {
         if ((flags & PROTECTED) != 0) flags |= PUBLIC;
         flags = flags & ClassFlags & ~STRICTFP;
         if ((flags & INTERFACE) == 0) flags |= ACC_SUPER;
+        if (c.isInner() && c.name.isEmpty()) flags &= ~FINAL;
         if (dumpClassModifiers) {
             log.errWriter.println();
             log.errWriter.println("CLASSFILE  " + c.getQualifiedName());
@@ -1510,9 +1502,16 @@ public class ClassWriter extends ClassFile {
             case MTH: if ((e.sym.flags() & HYPOTHETICAL) == 0) methodsCount++;
                       break;
             case TYP: enterInner((ClassSymbol)e.sym); break;
-            default : assert false;
+            default : Assert.error();
             }
         }
+
+        if (c.trans_local != null) {
+            for (ClassSymbol local : c.trans_local) {
+                enterInner(local);
+            }
+        }
+
         databuf.appendChar(fieldsCount);
         writeFields(c.members().elems);
         databuf.appendChar(methodsCount);
@@ -1522,11 +1521,11 @@ public class ClassWriter extends ClassFile {
         int acount = 0;
 
         boolean sigReq =
-            typarams.length() != 0 || supertype.getTypeArguments().length() != 0;
+            typarams.length() != 0 || supertype.allparams().length() != 0;
         for (List<Type> l = interfaces; !sigReq && l.nonEmpty(); l = l.tail)
-            sigReq = l.head.getTypeArguments().length() != 0;
+            sigReq = l.head.allparams().length() != 0;
         if (sigReq) {
-            assert source.allowGenerics();
+            Assert.check(source.allowGenerics());
             int alenIdx = writeAttr(names.Signature);
             if (typarams.length() != 0) assembleParamsSig(typarams);
             assembleSig(supertype);
@@ -1544,13 +1543,8 @@ public class ClassWriter extends ClassFile {
             // the last possible moment because the sourcefile may be used
             // elsewhere in error diagnostics. Fixes 4241573.
             //databuf.appendChar(c.pool.put(c.sourcefile));
-            String filename = c.sourcefile.toString();
-            int sepIdx = filename.lastIndexOf(File.separatorChar);
-            // Allow '/' as separator on all platforms, e.g., on Win32.
-            int slashIdx = filename.lastIndexOf('/');
-            if (slashIdx > sepIdx) sepIdx = slashIdx;
-            if (sepIdx >= 0) filename = filename.substring(sepIdx + 1);
-            databuf.appendChar(c.pool.put(names.fromString(filename)));
+            String simpleName = BaseFileObject.getSimpleName(c.sourcefile);
+            databuf.appendChar(c.pool.put(names.fromString(simpleName)));
             endAttr(alenIdx);
             acount++;
         }
